@@ -1,13 +1,14 @@
 from train import *
-from pl_wrap_obstetrics import *
+from pl_wrap_obstetrics import  PlModelWrapEnsemble
 from models.model_ensemble import ModelsEnsembleClassification
 import os
 import re
 import torch
 from argparse import ArgumentParser
+import yaml
 
 def main(config: EasyDict):
-    # wandb logger (optional)
+    # Optional: Wandb logger
     logger = wandb_interface(config)
 
     # Create the data module
@@ -19,8 +20,8 @@ def main(config: EasyDict):
     # Prepare task-specific config
     arrange_config4task(config)
 
-    # Load the model(s) from checkpoint
-    pl_model = load_model_from_checkpoint(config)
+    # Load model ensemble
+    model_ensemble = load_model_ensemble(config)
 
     # Trainer setup
     trainer = pl.Trainer(
@@ -30,41 +31,16 @@ def main(config: EasyDict):
     )
 
     # Run evaluation
+    pl_model = PlModelWrapEnsemble(
+        model=model_ensemble,
+        class_names=data_module.class_names
+    )
+    print(type(pl_model))
     trainer.test(pl_model, datamodule=data_module)
-
-
-def load_model_from_checkpoint(config: EasyDict):
-    """
-    Loads a single model or an ensemble from checkpoint(s), using
-    the saved hyperparameters.
-    """
-    wrapper_class = globals()[config.lightning_wrapper.wrapper_name]
-    versions = getattr(config, "versions", "v1").split(",")  # default to v1 if missing
-
-    if getattr(config, "task", "obstetrics") == "obstetrics":
-        model_ensemble = ModelsEnsembleClassification()
-
-        experiment_base_name = re.sub(r"_v\d-", "{}-", config.experiment_name)
-        for v in versions:
-            experiment_name = experiment_base_name.format(v)
-            print(f"Loading experiment: {experiment_name}")
-            experiment_dir = os.path.join(config.checkpointing.ckpt_dir, experiment_name)
-
-            # Iterate over all folds
-            for fold_dir in os.listdir(experiment_dir):
-                checkpoint_path = os.path.join(experiment_dir, fold_dir, "best_val-v1.ckpt")
-                if os.path.exists(checkpoint_path):
-                    # Load model from checkpoint using saved hyperparameters
-                    pl_model = wrapper_class.load_from_checkpoint(checkpoint_path)
-                    model_ensemble.append(pl_model.model)
-                else:
-                    print(f"Warning: checkpoint not found: {checkpoint_path}")
-
-        return model_ensemble
-
-    else:
-        raise ValueError(f"Unsupported task: {config.task}")
+   
     
+    
+
 def load_model_ensemble(config: EasyDict):
     wrapper_class = globals()[config.lightning_wrapper.wrapper_name]
     model_ensemble = ModelsEnsembleClassification()
@@ -93,11 +69,12 @@ def load_model_ensemble(config: EasyDict):
 
 
 def arrange_config4task(config: EasyDict):
-    """Prepare data-dependent config values"""
-    if config.task == "obstetrics":
-        config.lightning_wrapper.batch_size = config.data_module.batch_size
-        # class names are needed for metrics
-        config.lightning_wrapper.class_names = config.data_module.class_names
+    """Prepare config values for obstetrics evaluation"""
+    config.lightning_wrapper.batch_size = config.data_module_instance.batch_size
+    config.lightning_wrapper.class_names = getattr(config.data_module_instance, "class_names", ["class0", "class1"])
+    # checkpoint callback not needed for evaluation
+    config.checkpointing.CheckpointCallback = None
+    config.checkpointing.callback_kwargs = dict()
 
 
 def wandb_interface(config: EasyDict):

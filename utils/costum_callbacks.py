@@ -17,6 +17,19 @@ def CheckpointCallbackAD(ckpt_dir, experiment_name, data_fold):
     checkpoint_callback.CHECKPOINT_NAME_LAST = "last"
     return checkpoint_callback
 
+def CheckpointCallbackObstetrics(ckpt_dir, experiment_name, data_fold):
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=os.path.join(ckpt_dir, experiment_name, f"fold_{data_fold}"),
+        filename='best_val',
+        save_top_k=1,
+        save_last=True,
+        auto_insert_metric_name=False,
+        monitor="val/bal_acc",
+        mode="max"
+        )
+    checkpoint_callback.CHECKPOINT_NAME_LAST = "last"
+    return checkpoint_callback
+
 
 def CheckpointCallbackBrainage(ckpt_dir, experiment_name):
     checkpoint_callback = ModelCheckpoint(

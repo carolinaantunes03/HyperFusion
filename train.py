@@ -10,13 +10,12 @@ from easydict import EasyDict
 import sys
 
 # per model and data imports:
-from utils.costum_callbacks import CheckpointCallbackBrainage, CheckpointCallbackAD
+from utils.costum_callbacks import CheckpointCallbackBrainage, CheckpointCallbackAD, CheckpointCallbackObstetrics
 from utils.utils import get_class_weight
-from pl_wrap import PlModelWrapADcls, PlModelWrapBrainAge
-from data_utils.ADNI_data_handler import ADNIDataModule
-from data_utils.BrainAge_data_handler import BrainAgeDataModule
-from models.Hyperfusion.HyperFusion_AD_model import *
-from models.Hyperfusion.HyperFusion_brainage_model import *
+from pl_wrap_obstetrics import PlModelWrapObstetrics
+from data_utils.obstetrics_data_handler import ObstetricsDataModule
+from models.Hyperfusion.Hyper_multimodal_model import *
+
 from models.Film_DAFT_preactive.models_film_daft import *
 from models.base_models import *
 from models.concat_models import *
@@ -28,51 +27,103 @@ def main(config: EasyDict):
     # Create the data module:
     data_module_name = config.data_module.pop("data_module_name")
     data_module = globals()[data_module_name](config.data_module)
+    data_module.setup()
     config.data_module_instance = data_module
+
+    num_numerical = data_module.num_tabular_features
+    num_classes = data_module.num_classes
 
     # add and change some configurations w.r.t the task (config.task)
     arrange_config4task(config)
 
     # build the model
     model_name = config.model.pop("model_name")
-    model = globals()[model_name](**config.model)
+    
+    if model_name == "HyperMultimodalMedViT":
+        from models.base_models import FTTransformer  
 
-    # wrap the model with its relevant pytorch lightning model
-    config.lightning_wrapper.model = model
-    lightning_wrapper_name = config.lightning_wrapper.pop("wrapper_name")
-    pl_model = globals()[lightning_wrapper_name](**config.lightning_wrapper)
+        fttransformer = FTTransformer(
+                num_numerical=num_numerical,
+                num_categories=[],
+                token_dim=config.model.get("tabular_dim", 192),
+                hidden_size=config.model.get("tabular_dim", 192),
+                num_classes=config.model.get("n_outputs", 2)
+            )
 
-    # Callbacks:
-    callbacks = [TimeEstimatorCallback(config.trainer.epochs)]
-    if config.checkpointing.enable:
-        callbacks += [config.checkpointing.CheckpointCallback(**config.checkpointing.callback_kwargs)]
 
-    if len(config.trainer.gpu) > 1:
-        strategy = "dp"
-    else:
-        strategy = None
+        from models.base_models import MedViTModel  
 
-    # Create the trainer:
-    trainer = pl.Trainer(
-        accelerator="gpu",
-        devices=config.trainer.gpu,
-        strategy=strategy,
-        default_root_dir=config.checkpointing.ckpt_dir,
+        medvit_model = MedViTModel(
+                variant='base',
+                pretrained_path=None,  # add path later
+                freeze=False,
+                device='cuda' if torch.cuda.is_available() else 'cpu'
+                )
 
-        logger=logger,
-        callbacks=callbacks,
+        # inject into config
+        config.model["fttransformer"] = fttransformer
+        config.model["medvit_model"] = medvit_model
 
-        max_epochs=config.trainer.epochs,
-        fast_dev_run=False,
-        num_sanity_val_steps=0,
-        log_every_n_steps=1,
-        overfit_batches=config.trainer.overfit_batches,
+    k_folds = config.data_module.get("k_folds", 5)
+    for fold in range(k_folds):
+        print(f"\n=== Training fold {fold+1}/{k_folds} ===")
+        
+        # Setup data module for this fold
+        data_module.setup(fold_idx=fold, k_folds=k_folds)
+        config.data_module_instance = data_module
 
-        enable_checkpointing=config.checkpointing.enable,
-    )
+        # Build new model for each fold
+        model = globals()[model_name](**config.model)
+        lightning_wrapper_name = config.lightning_wrapper["wrapper_name"]
+        pl_model = globals()[lightning_wrapper_name](
+            model=model,
+            batch_size=config.lightning_wrapper.batch_size,
+            optimizer=config.lightning_wrapper.optimizer,
+            loss=config.lightning_wrapper.loss,
+            class_names=config.lightning_wrapper.class_names
+        )
 
-    if not config.checkpointing.continue_train_from_ckpt:
+        # Prepare fold-specific checkpoint dir
+        # Prepare fold-specific checkpoint dir
+        fold_ckpt_dir = os.path.join(config.checkpointing.ckpt_dir, f"fold_{fold}")
+        os.makedirs(fold_ckpt_dir, exist_ok=True)
+
+        # override the ckpt_dir for this fold in the kwargs
+        config.checkpointing.callback_kwargs["ckpt_dir"] = fold_ckpt_dir
+
+        # Instantiate callbacks for this fold
+        if config.checkpointing.enable:
+            callbacks_fold = [
+                TimeEstimatorCallback(config.trainer.epochs),
+                config.checkpointing.CheckpointCallback(**config.checkpointing.callback_kwargs)
+            ]
+        else:
+            callbacks_fold = [TimeEstimatorCallback(config.trainer.epochs)]
+
+        strategy = "dp" if len(config.trainer.gpu) > 1 else "auto"
+
+        trainer = pl.Trainer(
+            accelerator="gpu" if torch.cuda.is_available() else "cpu",
+            devices=config.trainer.gpu,
+            strategy=strategy,
+            default_root_dir=fold_ckpt_dir,
+            logger=logger,
+            callbacks=callbacks_fold,
+            max_epochs=config.trainer.epochs,
+            fast_dev_run=False,
+            num_sanity_val_steps=0,
+            log_every_n_steps=1,
+            overfit_batches=config.trainer.overfit_batches,
+            enable_checkpointing=config.checkpointing.enable,
+        )
+
+        # Train this fold
         trainer.fit(pl_model, datamodule=data_module)
+
+    print("\nK-Fold training completed. Fold checkpoints are saved for ensemble evaluation.")
+
+
+
 
 
 def arrange_config4task(config: EasyDict):
@@ -117,6 +168,7 @@ def arrange_config4task(config: EasyDict):
         config.model.GPU = config.trainer.gpu
 
         config.lightning_wrapper.batch_size = config.data_module.batch_size
+    
 
         # for checkpointing
 
@@ -127,25 +179,33 @@ def arrange_config4task(config: EasyDict):
         )
 
 
+    elif config.task == "obstetrics":
+        config.lightning_wrapper.batch_size = config.data_module_instance.batch_size
+        config.lightning_wrapper.class_names = config.data_module_instance.class_names
+
+        # checkpoint callback for obstetrics
+        config.checkpointing.CheckpointCallback = CheckpointCallbackObstetrics
+        config.checkpointing.callback_kwargs = dict(
+            ckpt_dir=config.checkpointing.ckpt_dir,
+            experiment_name=config.experiment_name,
+            data_fold=config.data_module.dataset_cfg.fold
+        )
+
+
+    
+        
 
 def wandb_interface(config: EasyDict):
     wandb_args = config.wandb
     if wandb_args.sweep or wandb_args.enable:
-        if wandb_args.sweep:  # gets the args from wandb
+        if wandb_args.sweep:
             wandb.init()
-
-            # taking the relevant args from the sweep's parameters
             for key in wandb.config.keys():
                 wandb_args[key] = wandb.config[key]
-
-            # the agent's CUDA_VISIBLE_DEVICES is alredy set:
             config.trainer.gpu = [0]
 
         os.makedirs(wandb_args.logs_dir, exist_ok=True)
-        if config.task == "AD_classification":
-            exp_name = config.experiment_name + f"-f{config.data_module.dataset_cfg.fold}"
-        else:
-            exp_name = config.experiment_name
+        exp_name = config.experiment_name
         logger = WandbLogger(project=wandb_args.project_name,
                              name=exp_name,
                              save_dir=wandb_args.logs_dir)
@@ -161,16 +221,13 @@ def wandb_interface(config: EasyDict):
             return items
 
         logger.experiment.config.update(flatten_dict(config))
-
     else:
         logger = False
     return logger
 
 
 if __name__ == '__main__':
-    default_cfg_path = os.path.join(os.getcwd(), "experiments", "AD_classification", "default_train_config.yml")
-    # default_cfg_path = os.path.join(os.getcwd(), "experiments", "brain_age_prediction", "default_train_config.yml")
-
+    default_cfg_path = os.path.join(os.getcwd(), "experiments", "mode_delivery_prediction", "default_train_config.yml")
     parser = ArgumentParser()
     parser.add_argument('-c', '--config_path', default=default_cfg_path, type=str, help="path to YAML config file")
     parser.add_argument('-d', '--debug', action='store_true', default=False)
@@ -180,15 +237,10 @@ if __name__ == '__main__':
     with open(args.config_path, 'r') as file:
         config = EasyDict(yaml.safe_load(file))
 
-    # debug mode using an IDE
+    # debug adjustments
     ide_debug_mode = any('pydevd' in s for s in sys.modules)
     if args.debug or ide_debug_mode:
         print("debug mode activated!")
-
-        config_path = "/path/to/config.yml"
-        with open(config_path, 'r') as file:
-            config = EasyDict(yaml.safe_load(file))
-
         config.data_module.num_workers = 0
         config.trainer.gpu = [1]
         config.wandb.enable = False

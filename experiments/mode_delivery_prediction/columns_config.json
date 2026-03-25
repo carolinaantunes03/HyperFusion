@@ -1,0 +1,29 @@
+{
+  "num_cols": ["Paridade", "Gesta", "AE", "PartoTermoAnterior", "Idade", "PesoInicial", "PesoFinal", "Altura", "IMCInicial",
+    "IMCfinal", "AumentoPonderal", "IGPPTAnterior", "PartoAntTempoMeses", "IG", "Bishop",
+    "EPF(pesoemg)", "Eco3ºT(semanas)", "DPB(mm)", "PC(mm)", "pAB(mm)", "FL(mm)", "EPF(percentil)"],
+
+  "cat_cols": ["MetodoInd_1-misoprostol", "MetodoInd_2-dinoprostona", "MetodoInd_3-ocitocina", "MetodoInd_4-SF",
+    "PartoAntTipo_1-csa", "PartoAntTipo_2-instrumentado", "PartoAntTipo_3-PE", "PartoAntTipo_4-CSA+PE", "PartoAntTipo_5-CSA+instrumentado",
+    "PartoAntTipo_6-PE+instrumentado", "PartoAntTipo_SemPartoAnterior", "TipoInstrument_1-ventosa",
+    "TipoInstrument_2-forceps", "TipoInstrument_3-ventosa+forceps", "TipoInstrument_SemPartoAnterior",
+    "MotivoCSAant_10-EFNTintraparto", "MotivoCSAant_11-outras", "MotivoCSAant_3-patprópriadagravidez",
+    "MotivoCSAant_5-sit/apfetalanómala", "MotivoCSAant_6-gravidezmúltipla", "MotivoCSAant_7-suspdeIFP",
+    "MotivoCSAant_8-Induçãofalhada", "MotivoCSAant_9-TPestacionário", "MotivoCSAant_SemPartoAnterior",
+    "ComplicGravidez_0-semcomplicações", "ComplicGravidez_1-RPM", "ComplicGravidez_10-colestasegravídica",
+    "ComplicGravidez_2-DG", "ComplicGravidez_3-HTA", "ComplicGravidez_4-pré-eclâmpsia", "ComplicGravidez_5-RCF",
+    "ComplicGravidez_6-oligoamnios", "ComplicGravidez_7-hidramnios", "ComplicGravidez_9-trombocitopeniagestacional",
+    "PatologiasPrevias_0-sempatologias", "PatologiasPrevias_1-DM", "PatologiasPrevias_10-nódulostiroideus",
+    "PatologiasPrevias_11-SOP", "PatologiasPrevias_12-Pneumológica", "PatologiasPrevias_13-ginecológica",
+    "PatologiasPrevias_14-cardíaca", "PatologiasPrevias_15-neurologica", "PatologiasPrevias_17-hematologica",
+    "PatologiasPrevias_18-infeciosa", "PatologiasPrevias_19-obesidade", "PatologiasPrevias_2-hipotiroidismo",
+    "PatologiasPrevias_20-outras", "PatologiasPrevias_3-HTAc", "PatologiasPrevias_4-trombofilia",
+    "PatologiasPrevias_5-patologiaautoimune", "PatologiasPrevias_6-patologiaoncológica",
+    "PatologiasPrevias_8-doençarenalpoliquistica", "PatologiasPrevias_9-cirurgiabariátrica", "MotivoInd_9-RCF",
+    "MotivoInd_1-IG41sem", "MotivoInd_10-patologiamaterna", "MotivoInd_11-patologiafetal", "MotivoInd_12-RPM",
+    "MotivoInd_13-IGPMA", "MotivoInd_14-outro", "MotivoInd_15-CTGsuspeito", "MotivoInd_2-oligoamnios",
+    "MotivoInd_3-colestase", "MotivoInd_4-DG", "MotivoInd_5-HTA", "MotivoInd_6-pré-eclâmpsia",
+    "MotivoInd_7-trombofilia", "MotivoInd_8-doençaautoimune", "CSAAnt", "PPTAnterior"],
+
+  "image_cols": ["abdomen_image", "head_image", "femur_image"]
+}

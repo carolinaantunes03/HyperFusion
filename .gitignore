@@ -13,5 +13,12 @@
 /experiments/AD_classification/temp_configs/*
 !/experiments/AD_classification/temp_configs/README.md
 
+/experiments/mode_delivery_prediction/checkpoints/*
 /pyproj/artifacts/
 
+
+/Datasets/Obstetrics/retrospective-dataset/images/*
+Datasets/Obstetrics/prospective-dataset/prospective_images/*
+
+__pycache__/
+.pyc
